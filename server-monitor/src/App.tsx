@@ -5,6 +5,7 @@ import DashboardPage from './DashboardPage';
 import SettingsPage from './SettingsPage';
 import { Server } from './data';
 import { API_URL, WS_URL } from './config';
+import './App.css';
 
 function App() {
   const [servers, setServers] = useState<Server[]>([]);

@@ -23,9 +23,13 @@ const ServerCard: React.FC<ServerCardProps> = ({ server }) => {
   };
 
   const isChecking = server.status === ServerStatus.Checking;
+  const isOffline = server.status === ServerStatus.Offline;
+
+  const cardClasses = `card h-100 ${isOffline ? 'border-danger offline-card-animation' : ''}`;
+  const statusTextClasses = `card-text d-flex align-items-center ${statusColors[server.status]} ${isOffline ? 'fw-bold' : ''}`;
 
   return (
-    <div className="card h-100">
+    <div className={cardClasses}>
       <div className="card-header d-flex justify-content-between align-items-center">
         <h5 className="card-title mb-0">{server.name}</h5>
         <button 
@@ -38,7 +42,7 @@ const ServerCard: React.FC<ServerCardProps> = ({ server }) => {
       </div>
       <div className="card-body">
         <p className="card-text text-muted">{server.domain}</p>
-        <p className={`card-text d-flex align-items-center ${statusColors[server.status]}`}>
+        <p className={statusTextClasses}>
           <span style={{ fontSize: '1.5em', marginRight: '0.5rem' }}>●</span>
           {server.status}
           {isChecking && <div className="spinner-border spinner-border-sm ms-2" role="status"><span className="visually-hidden">Loading...</span></div>}
