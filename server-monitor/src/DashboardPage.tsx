@@ -13,7 +13,7 @@ const DashboardPage: React.FC<DashboardPageProps> = ({ servers }) => {
       <h1 className="mb-4">Dashboard</h1>
       <div className="row">
         {servers.map(server => (
-          <div className="col-lg-4 col-md-6 mb-4" key={server.id}>
+          <div className="col-lg-3 col-md-6 mb-4" key={server.id}>
             <ServerCard server={server} />
           </div>
         ))}
