@@ -7,11 +7,13 @@ A simple but powerful full-stack application to monitor the health and status of
 
 - **Real-time Dashboard**: A dashboard of cards showing the live status of all monitored servers.
 - **Nuanced Statuses**: Servers are classified as `Online` (2xx response), `Degraded` (4xx/5xx response), or `Offline` (network error).
-- **Real-time Updates**: Uses WebSockets to push status updates from the backend to the frontend instantly without needing a page refresh.
-- **CRUD Operations**: A settings page that allows you to Add, Edit, and Delete servers.
-- **Token Authentication**: Supports monitoring endpoints that require a Bearer token for authentication.
+- **Live Countdown Timer**: Shows a synchronized countdown to the next automatic refresh cycle.
+- **Real-time Updates**: Uses WebSockets to push status updates from the backend to the frontend instantly.
+- **Persistent Storage**: The server list and settings are saved to a `database.json` file, so your data is safe between restarts.
+- **Full CRUD Management**: A settings page to Add, Edit, and Delete servers.
+- **Token Authentication**: Supports monitoring endpoints that require a Bearer token.
 - **Manual Retry**: Instantly re-check the status of any server with a click of a button.
-- **Containerized**: The entire application (frontend and backend) is containerized with Docker and runs with a single command.
+- **Containerized**: The entire application is containerized with Docker and runs with a single command.
 
 ## Tech Stack
 

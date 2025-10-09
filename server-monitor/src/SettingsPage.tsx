@@ -1,26 +1,45 @@
-
-import React, { useState } from 'react';
-import { Server, ServerStatus } from './data';
-import { API_URL } from './config';
+import React, { useState } from "react";
+import { Server, ServerStatus } from "./data";
+import { API_URL, SETTINGS_URL } from "./config";
+import { useEffect } from "react";
 
 interface SettingsPageProps {
   servers: Server[];
   setServers: React.Dispatch<React.SetStateAction<Server[]>>;
+  healthCheckPeriod: number;
+  setHealthCheckPeriod: React.Dispatch<React.SetStateAction<number>>;
 }
 
-const SettingsPage: React.FC<SettingsPageProps> = ({ servers, setServers }) => {
-  const [healthCheckPeriod, setHealthCheckPeriod] = useState<number>(60);
-  
-  // State for adding a new server
-  const [newName, setNewName] = useState('');
-  const [newDomain, setNewDomain] = useState('');
-  const [newToken, setNewToken] = useState('');
+const SettingsPage: React.FC<SettingsPageProps> = ({
+  servers,
+  setServers,
+  healthCheckPeriod,
+  setHealthCheckPeriod,
+}) => {
+  useEffect(() => {
+    if (healthCheckPeriod === 60) return;
 
-  // State for editing a server
+    const handler = setTimeout(() => {
+      fetch(`${SETTINGS_URL}/health-check`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ period: healthCheckPeriod }),
+      }).catch((error) => console.error("Error saving settings:", error));
+    }, 1000);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [healthCheckPeriod]);
+
+  const [newName, setNewName] = useState("");
+  const [newDomain, setNewDomain] = useState("");
+  const [newToken, setNewToken] = useState("");
+
   const [editingServerId, setEditingServerId] = useState<number | null>(null);
-  const [editName, setEditName] = useState('');
-  const [editDomain, setEditDomain] = useState('');
-  const [editToken, setEditToken] = useState<string | undefined>('');
+  const [editName, setEditName] = useState("");
+  const [editDomain, setEditDomain] = useState("");
+  const [editToken, setEditToken] = useState<string | undefined>("");
 
   const handleAddServer = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,24 +53,23 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ servers, setServers }) => {
     };
 
     fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(newServer),
     })
-      .then(res => res.json())
-      .then(addedServer => {
+      .then((res) => res.json())
+      .then((addedServer) => {
         setServers([...servers, addedServer]);
-        setNewName('');
-        setNewDomain('');
-        setNewToken('');
+        setNewName("");
+        setNewDomain("");
+        setNewToken("");
       });
   };
 
   const handleDeleteServer = (id: number) => {
-    fetch(`${API_URL}/${id}`, { method: 'DELETE' })
-      .then(() => {
-        setServers(servers.filter(server => server.id !== id));
-      });
+    fetch(`${API_URL}/${id}`, { method: "DELETE" }).then(() => {
+      setServers(servers.filter((server) => server.id !== id));
+    });
   };
 
   const handleEdit = (server: Server) => {
@@ -63,24 +81,28 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ servers, setServers }) => {
 
   const handleCancelEdit = () => {
     setEditingServerId(null);
-    setEditName('');
-    setEditDomain('');
-    setEditToken('');
+    setEditName("");
+    setEditDomain("");
+    setEditToken("");
   };
 
   const handleSaveEdit = (id: number) => {
-    const updatedServer = { name: editName, domain: editDomain, token: editToken };
+    const updatedServer = {
+      name: editName,
+      domain: editDomain,
+      token: editToken,
+    };
 
     fetch(`${API_URL}/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(updatedServer),
     })
-      .then(res => res.json())
-      .then(savedServer => {
-        setServers(servers.map(server => 
-          server.id === id ? savedServer : server
-        ));
+      .then((res) => res.json())
+      .then((savedServer) => {
+        setServers(
+          servers.map((server) => (server.id === id ? savedServer : server))
+        );
         handleCancelEdit();
       });
   };
@@ -88,23 +110,25 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ servers, setServers }) => {
   return (
     <div>
       <h1 className="mb-4">Settings</h1>
-
       <div className="card mb-4">
         <div className="card-header">Configuration</div>
         <div className="card-body">
           <div className="mb-3">
-            <label htmlFor="healthCheckPeriod" className="form-label">Health Check Period (seconds)</label>
+            <label htmlFor="healthCheckPeriod" className="form-label">
+              Health Check Period (seconds)
+            </label>
             <input
               type="number"
               className="form-control"
               id="healthCheckPeriod"
               value={healthCheckPeriod}
-              onChange={(e) => setHealthCheckPeriod(parseInt(e.target.value, 10))}
+              onChange={(e) =>
+                setHealthCheckPeriod(parseInt(e.target.value, 10) || 1)
+              }
             />
           </div>
         </div>
       </div>
-
       <div className="card">
         <div className="card-header">Monitored Servers</div>
         <div className="card-body">
@@ -114,30 +138,72 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ servers, setServers }) => {
                 <th>Name</th>
                 <th>Domain/IP</th>
                 <th>Token</th>
-                <th style={{ width: '150px' }}>Actions</th>
+                <th style={{ width: "150px" }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {servers.map(server => (
+              {servers.map((server) => (
                 <tr key={server.id}>
                   {editingServerId === server.id ? (
                     <>
-                      <td><input type="text" className="form-control" value={editName} onChange={(e) => setEditName(e.target.value)} /></td>
-                      <td><input type="text" className="form-control" value={editDomain} onChange={(e) => setEditDomain(e.target.value)} /></td>
-                      <td><input type="password" className="form-control" value={editToken} onChange={(e) => setEditToken(e.target.value)} placeholder="********" /></td>
                       <td>
-                        <button className="btn btn-sm btn-success me-2" onClick={() => handleSaveEdit(server.id)}>Save</button>
-                        <button className="btn btn-sm btn-secondary" onClick={handleCancelEdit}>Cancel</button>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="text"
+                          className="form-control"
+                          value={editDomain}
+                          onChange={(e) => setEditDomain(e.target.value)}
+                        />
+                      </td>
+                      <td>
+                        <input
+                          type="password"
+                          className="form-control"
+                          value={editToken}
+                          onChange={(e) => setEditToken(e.target.value)}
+                          placeholder="********"
+                        />
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-success me-2"
+                          onClick={() => handleSaveEdit(server.id)}
+                        >
+                          Save
+                        </button>
+                        <button
+                          className="btn btn-sm btn-secondary"
+                          onClick={handleCancelEdit}
+                        >
+                          Cancel
+                        </button>
                       </td>
                     </>
                   ) : (
                     <>
                       <td>{server.name}</td>
                       <td>{server.domain}</td>
-                      <td>{server.token ? '********' : 'N/A'}</td>
+                      <td>{server.token ? "********" : "N/A"}</td>
                       <td>
-                        <button className="btn btn-sm btn-primary me-2" onClick={() => handleEdit(server)}>Edit</button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteServer(server.id)}>Delete</button>
+                        <button
+                          className="btn btn-sm btn-primary me-2"
+                          onClick={() => handleEdit(server)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => handleDeleteServer(server.id)}
+                        >
+                          Delete
+                        </button>
                       </td>
                     </>
                   )}
@@ -147,30 +213,54 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ servers, setServers }) => {
           </table>
         </div>
       </div>
-
       <div className="card mt-4">
         <div className="card-header">Add New Server</div>
         <div className="card-body">
           <form onSubmit={handleAddServer}>
             <div className="mb-3">
-              <label htmlFor="serverName" className="form-label">Server Name</label>
-              <input type="text" className="form-control" id="serverName" value={newName} onChange={(e) => setNewName(e.target.value)} />
+              <label htmlFor="serverName" className="form-label">
+                Server Name
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                id="serverName"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+              />
             </div>
             <div className="mb-3">
-              <label htmlFor="serverDomain" className="form-label">Domain/IP</label>
-              <input type="text" className="form-control" id="serverDomain" value={newDomain} onChange={(e) => setNewDomain(e.target.value)} />
+              <label htmlFor="serverDomain" className="form-label">
+                Domain/IP
+              </label>
+              <input
+                type="text"
+                className="form-control"
+                id="serverDomain"
+                value={newDomain}
+                onChange={(e) => setNewDomain(e.target.value)}
+              />
             </div>
             <div className="mb-3">
-              <label htmlFor="serverToken" className="form-label">Authentication Token (Optional)</label>
-              <input type="password" className="form-control" id="serverToken" value={newToken} onChange={(e) => setNewToken(e.target.value)} />
+              <label htmlFor="serverToken" className="form-label">
+                Authentication Token (Optional)
+              </label>
+              <input
+                type="password"
+                className="form-control"
+                id="serverToken"
+                value={newToken}
+                onChange={(e) => setNewToken(e.target.value)}
+              />
             </div>
-            <button type="submit" className="btn btn-success">Add Server</button>
+            <button type="submit" className="btn btn-success">
+              Add Server
+            </button>
           </form>
         </div>
       </div>
-
     </div>
   );
-}
+};
 
 export default SettingsPage;

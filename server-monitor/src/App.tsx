@@ -1,45 +1,47 @@
-
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import DashboardPage from './DashboardPage';
-import SettingsPage from './SettingsPage';
-import { Server } from './data';
-import { API_URL, WS_URL } from './config';
-import './App.css';
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import DashboardPage from "./DashboardPage";
+import SettingsPage from "./SettingsPage";
+import { Server } from "./data";
+import { API_URL, SETTINGS_URL } from "./config";
+import { websocketService } from "./websocketService";
+import "./App.css";
 
 function App() {
   const [servers, setServers] = useState<Server[]>([]);
+  const [healthCheckPeriod, setHealthCheckPeriod] = useState<number>(60);
+  const [lastCheckedAt, setLastCheckedAt] = useState<number | null>(null);
 
   useEffect(() => {
-    // Initial fetch
     fetch(API_URL)
-      .then(res => res.json())
-      .then(data => setServers(data))
-      .catch(error => console.error('Error fetching servers:', error));
+      .then((res) => res.json())
+      .then((data) => setServers(data))
+      .catch((error) => console.error("Error fetching servers:", error));
 
-    // Set up WebSocket connection
-    const ws = new WebSocket(WS_URL);
+    fetch(`${SETTINGS_URL}/health-check`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.period) {
+          setHealthCheckPeriod(data.period);
+        }
+      })
+      .catch((error) => console.error("Error fetching settings:", error));
 
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-    };
+    websocketService.connect();
+    websocketService.onMessage((payload) => {
+      setServers([...payload.servers]);
+      setLastCheckedAt(payload.meta.lastCheckedAt);
 
-    ws.onmessage = (event) => {
-      const updatedServers = JSON.parse(event.data);
-      setServers(updatedServers);
-    };
+      setHealthCheckPeriod((prevPeriod) => {
+        if (payload.meta.healthCheckPeriod !== prevPeriod) {
+          return payload.meta.healthCheckPeriod;
+        }
+        return prevPeriod;
+      });
+    });
 
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-    };
-
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    // Clean up the connection when the component unmounts
     return () => {
-      ws.close();
+      websocketService.disconnect();
     };
   }, []);
 
@@ -47,17 +49,31 @@ function App() {
     <Router>
       <nav className="navbar navbar-expand-lg navbar-dark bg-dark">
         <div className="container-fluid">
-          <Link className="navbar-brand" to="/">Server Monitor</Link>
-          <button className="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+          <Link className="navbar-brand" to="/">
+            Server Monitor
+          </Link>
+          <button
+            className="navbar-toggler"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#navbarNav"
+            aria-controls="navbarNav"
+            aria-expanded="false"
+            aria-label="Toggle navigation"
+          >
             <span className="navbar-toggler-icon"></span>
           </button>
           <div className="collapse navbar-collapse" id="navbarNav">
             <ul className="navbar-nav">
               <li className="nav-item">
-                <Link className="nav-link" to="/">Dashboard</Link>
+                <Link className="nav-link" to="/">
+                  Dashboard
+                </Link>
               </li>
               <li className="nav-item">
-                <Link className="nav-link" to="/settings">Settings</Link>
+                <Link className="nav-link" to="/settings">
+                  Settings
+                </Link>
               </li>
             </ul>
           </div>
@@ -65,8 +81,27 @@ function App() {
       </nav>
       <div className="container mt-4">
         <Routes>
-          <Route path="/" element={<DashboardPage servers={servers} />} />
-          <Route path="/settings" element={<SettingsPage servers={servers} setServers={setServers} />} />
+          <Route
+            path="/"
+            element={
+              <DashboardPage
+                servers={servers}
+                healthCheckPeriod={healthCheckPeriod}
+                lastCheckedAt={lastCheckedAt}
+              />
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <SettingsPage
+                servers={servers}
+                setServers={setServers}
+                healthCheckPeriod={healthCheckPeriod}
+                setHealthCheckPeriod={setHealthCheckPeriod}
+              />
+            }
+          />
         </Routes>
       </div>
     </Router>

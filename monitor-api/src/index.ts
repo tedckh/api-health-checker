@@ -1,9 +1,10 @@
-
 import express from 'express';
 import cors from 'cors';
 import fetch, { Headers } from 'node-fetch';
 import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 const port = process.env.PORT || 5101;
@@ -11,7 +12,9 @@ const port = process.env.PORT || 5101;
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 
-// Types and Data
+// --- Data Persistence ---
+const DB_FILE = path.join(__dirname, 'database.json');
+
 enum ServerStatus {
   Online = 'Online',
   Offline = 'Offline',
@@ -24,25 +27,77 @@ interface Server {
   name: string;
   domain: string;
   status: ServerStatus;
-  token?: string; // Optional authentication token
+  token?: string;
 }
 
-let servers: Server[] = [
-  { id: 1, name: 'Public Test API', domain: 'api.publicapis.org/entries', status: ServerStatus.Checking },
-  { id: 2, name: 'Google', domain: 'google.com', status: ServerStatus.Checking },
-  { id: 3, name: 'A Fictional Blog', domain: 'blog.fictional-site.dev', status: ServerStatus.Checking },
-  { id: 4, name: 'Example Site', domain: 'example.com', status: ServerStatus.Checking, token: 'some-secret-token' },
-];
+interface Database {
+  servers: Server[];
+  healthCheckIntervalSeconds: number;
+}
+
+let db: Database = {
+  servers: [],
+  healthCheckIntervalSeconds: 60,
+};
+
+const loadDatabase = () => {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const data = fs.readFileSync(DB_FILE, 'utf-8');
+      db = JSON.parse(data);
+      db.servers.forEach(server => server.status = ServerStatus.Checking);
+      console.log('Database loaded successfully.');
+    } else {
+      saveDatabase();
+      console.log('No database file found, created a new one.');
+    }
+  } catch (error) {
+    console.error('Failed to load database:', error);
+    db = { servers: [], healthCheckIntervalSeconds: 60 };
+  }
+};
+
+const saveDatabase = () => {
+  try {
+    fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+  } catch (error) {
+    console.error('Failed to save database:', error);
+  }
+};
+
+loadDatabase();
+
+// --- End of Data Persistence ---
+
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
+// Test Counter
+let counter = 0;
+
+// Test Endpoint
+app.get('/api/test/counter', (req, res) => {
+  counter++;
+  res.json({ count: counter });
+});
+
+// Settings
+let healthCheckTimer: NodeJS.Timeout;
+
 // WebSocket Logic
-const broadcast = (data: any) => {
+const broadcastUpdate = () => {
+  const payload = {
+    servers: db.servers,
+    meta: {
+      lastCheckedAt: Date.now(),
+      healthCheckPeriod: db.healthCheckIntervalSeconds,
+    },
+  };
   wss.clients.forEach(client => {
     if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify(data));
+      client.send(JSON.stringify(payload));
     }
   });
 };
@@ -55,12 +110,8 @@ const checkServerStatus = async (server: Server): Promise<ServerStatus> => {
     if (server.token) {
       headers.append('Authorization', `Bearer ${server.token}`);
     }
-
     const response = await fetch(url, { headers, timeout: 5000 });
-
-    if (response.status >= 200 && response.status < 300) {
-      return ServerStatus.Online;
-    }
+    if (response.status >= 200 && response.status < 300) return ServerStatus.Online;
     return ServerStatus.Degraded;
   } catch (error) {
     return ServerStatus.Offline;
@@ -68,81 +119,104 @@ const checkServerStatus = async (server: Server): Promise<ServerStatus> => {
 };
 
 const updateAllServerStatuses = async () => {
-  console.log('Checking server statuses...');
-  const statusPromises = servers.map(async (server) => {
+  console.log(`Checking server statuses... (Interval: ${db.healthCheckIntervalSeconds}s)`);
+  const newServers = await Promise.all(db.servers.map(async (server) => {
     const newStatus = await checkServerStatus(server);
-    server.status = newStatus;
-  });
-  await Promise.all(statusPromises);
+    return { ...server, status: newStatus };
+  }));
+  db.servers = newServers;
   console.log('Finished checking server statuses. Broadcasting updates...');
-  broadcast(servers);
+  broadcastUpdate();
+};
+
+const startHealthCheckLoop = () => {
+  if (healthCheckTimer) clearInterval(healthCheckTimer);
+  updateAllServerStatuses();
+  healthCheckTimer = setInterval(updateAllServerStatuses, db.healthCheckIntervalSeconds * 1000);
+  console.log(`Health check loop started. Interval: ${db.healthCheckIntervalSeconds} seconds.`);
 };
 
 // API Endpoints
 app.get('/api/servers', (req, res) => {
-  res.json(servers);
+  res.json(db.servers);
 });
 
 app.post('/api/servers', (req, res) => {
-  const newServer: Server = {
-    ...req.body,
-    id: Date.now(),
-    status: ServerStatus.Checking,
-  };
-  servers.push(newServer);
+  const newServer: Server = { ...req.body, id: Date.now(), status: ServerStatus.Checking };
+  db.servers = [...db.servers, newServer];
+  saveDatabase();
   checkServerStatus(newServer).then(status => {
-    newServer.status = status;
-    broadcast(servers);
+    db.servers = db.servers.map(s => s.id === newServer.id ? { ...s, status } : s);
+    broadcastUpdate();
   });
   res.status(201).json(newServer);
 });
 
 app.post('/api/servers/:id/check', async (req, res) => {
-  const { id } = req.params;
-  const server = servers.find(s => s.id === parseInt(id, 10));
+  const serverId = parseInt(req.params.id, 10);
+  const server = db.servers.find(s => s.id === serverId);
+  if (!server) return res.status(404).json({ message: 'Server not found' });
 
-  if (!server) {
-    return res.status(404).json({ message: 'Server not found' });
-  }
-
-  server.status = ServerStatus.Checking;
-  broadcast(servers); // Immediately show that it's checking
+  db.servers = db.servers.map(s => s.id === serverId ? { ...s, status: ServerStatus.Checking } : s);
+  broadcastUpdate();
 
   const newStatus = await checkServerStatus(server);
-  server.status = newStatus;
-  broadcast(servers); // Broadcast the final result
+  db.servers = db.servers.map(s => s.id === serverId ? { ...s, status: newStatus } : s);
+  broadcastUpdate();
 
-  res.status(200).json(server);
+  const updatedServer = db.servers.find(s => s.id === serverId);
+  res.status(200).json(updatedServer);
 });
 
 app.delete('/api/servers/:id', (req, res) => {
-  const { id } = req.params;
-  servers = servers.filter(server => server.id !== parseInt(id, 10));
-  broadcast(servers);
+  db.servers = db.servers.filter(s => s.id !== parseInt(req.params.id, 10));
+  saveDatabase();
+  broadcastUpdate();
   res.status(204).send();
 });
 
 app.put('/api/servers/:id', (req, res) => {
-  const { id } = req.params;
-  const serverId = parseInt(id, 10);
+  const serverId = parseInt(req.params.id, 10);
   const updatedServerData = req.body;
+  let serverExists = false;
 
-  const serverIndex = servers.findIndex(s => s.id === serverId);
+  db.servers = db.servers.map(server => {
+    if (server.id === serverId) {
+      serverExists = true;
+      return { ...server, ...updatedServerData };
+    }
+    return server;
+  });
 
-  if (serverIndex === -1) {
-    return res.status(404).json({ message: 'Server not found' });
+  saveDatabase();
+  broadcastUpdate();
+
+  if (serverExists) {
+    const updatedServer = db.servers.find(s => s.id === serverId);
+    res.json(updatedServer);
+  } else {
+    res.status(404).json({ message: 'Server not found' });
   }
-
-  const updatedServer = { ...servers[serverIndex], ...updatedServerData };
-  servers[serverIndex] = updatedServer;
-
-  broadcast(servers);
-  res.json(updatedServer);
 });
 
-// Start Server and Health Check Loop
+app.get('/api/settings/health-check', (req, res) => {
+  res.json({ period: db.healthCheckIntervalSeconds });
+});
+
+app.put('/api/settings/health-check', (req, res) => {
+  const { period } = req.body;
+  if (period && typeof period === 'number' && period > 0) {
+    db.healthCheckIntervalSeconds = period;
+    saveDatabase();
+    startHealthCheckLoop();
+    res.json({ message: `Health check interval updated to ${period} seconds.` });
+  } else {
+    res.status(400).json({ message: 'Invalid period value' });
+  }
+});
+
+// Start Server
 server.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
-  updateAllServerStatuses();
-  setInterval(updateAllServerStatuses, 60000);
+  startHealthCheckLoop();
 });
