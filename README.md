@@ -1,6 +1,12 @@
 
 # API Health Checker
 
+<p align="center">
+  <img src="./assets/dashboard-without-servers.png" width="32%" alt="Dashboard without servers">
+  <img src="./assets/dashboard.png" width="32%" alt="Dashboard with servers">
+  <img src="./assets/setting.png" width="32%" alt="Settings page">
+</p>
+
 A simple but powerful full-stack application to monitor the health and status of your servers and APIs in real-time.
 
 ## Features
