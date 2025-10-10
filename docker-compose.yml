@@ -2,6 +2,7 @@
 version: '3.8'
 services:
   frontend:
+    image: tedchiu/health-checker-frontend:latest
     build:
       context: ./server-monitor
     ports:
@@ -10,6 +11,7 @@ services:
       - backend
 
   backend:
+    image: tedchiu/health-checker-backend:latest
     build:
       context: ./monitor-api
     ports:
